@@ -12706,18 +12706,20 @@
       "title": "FLAGSHIP (worked example): dropped-constraint honesty is now GOOD at the chrome level \u2014 banner flips to 'BROKEN, not a real relation (the freed variables fan the state space)', the proof badge withdraws to '~ sampled', the diagram title self-labels 'unbounded \u00b7 boundary sampled (capped) \u00b7 not exhaustive (true range may differ)', the exact dropped line is named in the footer AND marked with an Ace warning gutter annotation ('dropped constraint (left FREE \u2014 not translated to a Z3 Bool): count \u2264 celing'). This is far past 'a count the user scrolls past'. BUT the residual trust gap is real and systemic: the PLOT REGION ITSELF is never visually de-rated. On the BROKEN counter the chart still draws a clean, authoritative blue boundary bar reading count\u2208[0,399] in normal styling \u2014 no scrim, no diagonal hatch, no red frame, no 'PROVISIONAL' watermark over the data. ALL honesty rides in TEXT around the picture (title/subtitle/badge). A user who has internalized 'the diagram is the debugger' and scans the PICTURE, not the prose, still sees a confident answer. Systemic fix: when dropped>0 (and any time rigor=sampled BECAUSE of a drop), de-rate the PLOT itself, not just the caption \u2014 faint diagonal-hatch or grey scrim over the data region + one in-plot 'PROVISIONAL \u2014 N constraint(s) dropped' chip anchored on the data \u2014 so the betrayal cannot be missed by an image-scanner.",
       "detail": "Repro: counter with misspelled cap 'count \u2264 celing' (declared var is 'ceiling'). See ide/critics/recordings/ide-ux-critic-20260625-074755/02-dropped-constraint-broken-banner.png and 03-broken-state-graph.png.",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T07:54:28Z"
+      "created": "2026-06-25T07:54:28Z",
+      "cleared": "2026-06-28T10:41:23Z"
     },
     {
       "id": 418,
       "title": "COHERENCE: on a BROKEN model (1 dropped constraint, banner 'this model is BROKEN, not a real relation'), the state_graph PNG title still reads 'deterministic run (trajectory); showing 48 of 401 states'. 'deterministic' reassures one inch below a banner that warns the relation is broken/under-constrained \u2014 the two characterizations conflict on the same screen. The trajectory IS what was sampled, so it's not a lie, but the word choice undercuts the warning. Fix: when dropped>0 / rigor=sampled, drop the reassuring 'deterministic run' framing in the in-PNG title \u2014 call it 'one sampled path (model is under-constrained)' or similar, so the picture's own title agrees with the banner.",
       "detail": "Screenshot ide/critics/recordings/ide-ux-critic-20260625-074755/03-broken-state-graph.png \u2014 title vs banner conflict.",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T07:54:41Z"
+      "created": "2026-06-25T07:54:41Z",
+      "cleared": "2026-06-28T10:41:23Z"
     },
     {
       "id": 419,
@@ -12763,9 +12765,10 @@
       "title": "STALE VERDICT DOSSIER vouches for a DIFFERENT model than is on screen (BROKEN-class silent betrayal). Reproduced live: editor held 'fsm counter' (vars count, done; 1 dropped constraint; banner 'this model is BROKEN'), yet an open Verdict dossier modal displayed Collatz's verdict \u2014 title 'Verdict \u2014 \u2713 Terminates', '\u25cf fixed point (n=1)', '\u228f boundary n \u2208 [1, 9232]' \u2014 referencing variable n that DOES NOT EXIST in the current source. Worse: the dossier's own '\u26e8 double-check this verdict' affirmed '\u2713 cross-checked \u2014 the abstract verdict matches a brute-force enumeration of THIS MODEL', i.e. the soundness self-check vouched for a verdict about a different program. ROOT DESIGN DECISION: the dossier modal is a detached snapshot with NO lifecycle binding to the model \u2014 a model change (sample switch / edit) neither closes nor refreshes an open dossier, and the chip can even withdraw (BROKEN model \u2192 no .vchip-headline) while its spawned modal lingers with stale content. SEVERITY: this is the deepest trust-break in the cockpit \u2014 a verdict the user reads as 'the truth about my model' is silently about another program, and the tool's own anti-lie self-check rubber-stamps it. SYSTEMIC FIX: bind the dossier (and the verify/query result cards) to a model-revision id; on any recompute, either live-refresh the open dossier to the current model or CLOSE it and mark it stale ('this verdict is for a previous version \u2014 re-open'). Never let a verdict card outlive the model it describes. Screenshots: ide/critics/recordings/nadia-20260625-182038/13-verify-proven-on-broken-model.png and 10-cyclic-dossier.png",
       "detail": "screenshots 10,13 in nadia-20260625-182038/",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:32:59Z"
+      "created": "2026-06-25T18:32:59Z",
+      "cleared": "2026-06-28T10:41:23Z"
     },
     {
       "id": 449,
@@ -12782,18 +12785,20 @@
       "title": "VERIFY PROOF CARD HANDS BACK A CLEAN GREEN '\u2713 proven' ON A MODEL THE TOOL ELSEWHERE DECLARES BROKEN \u2014 no dropped-constraint caveat on the proof itself (MISLEADING). Reproduced live: counter with 'count \u2264 celing' (typo \u2192 1 dropped constraint; banner 'this model is BROKEN'; footer '\u26a0 1 dropped constraint'). Switched to the verify view, checked 'count \u2264 5' \u2192 '\u2713 proven \u2014 count \u2264 5 on all 6 reachable states', styled identically to a proof over a healthy model. The proof is technically true OF THE TRUNCATED MODEL (the dropped bound never participated), but a user who breaks their model, opens verify, and sees green '\u2713 proven' will reasonably believe their model is fine. The honesty rides entirely in the SEPARATE footer/banner; the proof CARD carries no caveat. DESIGN DECISION: the verify result card is decoupled from the dropped-constraint state \u2014 it reports proof status without inheriting the model's BROKEN flag. SYSTEMIC FIX: when dropped>0, the verify card must badge the result ('\u26a0 proven over a BROKEN model \u2014 N constraint(s) were dropped; this proof is about the truncated program, not what you wrote') and ideally de-rate the green to amber. A proof over a model that isn't the one the user wrote is exactly the silent-bug the honesty mandate targets. Screenshot: ide/critics/recordings/nadia-20260625-182038/06-broken-png-title-contradiction.png (verify card visible)",
       "detail": "screenshot 06,13",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:33:36Z"
+      "created": "2026-06-25T18:33:36Z",
+      "cleared": "2026-06-28T10:41:23Z"
     },
     {
       "id": 453,
       "title": "DROPPED-CONSTRAINT BANNER OVER-CLAIMS A CATASTROPHE ITS OWN ANALYSIS CONTRADICTS \u2014 three-way self-contradiction on one screen (MISLEADING / severity mis-calibration, OVER-loud direction). Reproduced live on the counter with the inert dropped 'count \u2264 celing': (1) BANNER (red): 'Under-constrained \u2014 this model is BROKEN, not a real relation (the freed variables fan the state space)' \u2014 asserts the state space FANS; (2) SOLUTION-SPACE PNG title (green badge): 'terminates \u00b7 boundary z3-proven exact' / 'z3-proven INDUCTIVE invariant (the box is closed under the transition)' \u2014 proves count\u2208[0,5] is a CLOSED invariant that does NOT fan; (3) FOOTER: '6 reachable (\u2713 complete) \u00b7 6 transitions' \u2014 small and complete. The banner's 'freed variables fan the state space' is a TEMPLATED string fired purely on dropped>0; here the dropped constraint was INERT (the \u0394 transition already caps count), so nothing fanned \u2014 the tool's own boundary analysis proves the banner wrong. This is crying wolf: a catastrophe message the same screen disproves. It also feeds the #418/#416 picture-vs-banner contradiction. DESIGN DECISION: the BROKEN banner text is generated from the drop count alone, not reconciled against the reachable-set/boundary result. SYSTEMIC FIX: make the banner consequence-aware \u2014 when a constraint is dropped, state the honest fact ('1 constraint you wrote was not applied \u2014 the model on screen is not the model you wrote') WITHOUT asserting 'fans the state space' unless the analysis actually shows broader reach than with the constraint. Distinguish 'dropped + dynamics changed' (truly fanned) from 'dropped + inert' (#419) and say which.",
       "detail": "screenshots 05,06,07",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:33:53Z"
+      "created": "2026-06-25T18:33:53Z",
+      "cleared": "2026-06-28T10:41:23Z"
     },
     {
       "id": 455,
