@@ -1,5 +1,5 @@
 {
-  "seq": 489,
+  "seq": 491,
   "tasks": [
     {
       "id": 1,
@@ -13040,27 +13040,30 @@
       "title": "Nonlinear claim card contradicts itself: body correctly says 'nonlinear claim (a product of variables) \u2014 Z3 can't soundly bound it (nonlinear integer arithmetic is undecidable)', but a green '\u2713 proven' badge still renders in the chart's top-right corner. A 'proven' stamp over an 'I can't prove this' message is an honesty mismatch. The dangerous part (#383's false [0,0] 'exact' box) is gone \u2014 this is only the badge. Fix: suppress the proven badge (or swap it for a 'skipped \u2014 nonlinear' chip) when the solution-space card is the nonlinear-undecidable fallback.",
       "detail": "claim rect / height,width \u2208 Int / area \u2208 Int = height*width \u2192 solution space view; screenshot 05-nonlinear-383.png; badge at top:254 left:1197 visible:true while body reads can't-soundly-bound",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-28T12:41:58Z"
+      "created": "2026-06-28T12:41:58Z",
+      "cleared": "2026-06-28T15:14:23Z"
     },
     {
       "id": 481,
       "title": "F2 rename has no keyword guard: invoking rename with the cursor on a LANGUAGE KEYWORD renames the keyword, corrupting the program. Reproduced on counter sample: cursor inside 'fsm' \u2192 prompt 'Rename \"fsm\"' \u2192 accepting yields 'RENAMED counter' (fsm keyword gone, program no longer parses). Same with 'Int': cursor in 'Int' \u2192 'count \u2208 XXX'. The variable-rename itself is excellent (count\u2192tally correctly updates _count/\u0394count/bare count \u2014 all four forms), but rename must REFUSE keywords/builtins (fsm, claim, type, enum, Int, Bool, Nat, \u2200/\u2203 etc.) \u2014 show 'nothing to rename here' instead of mangling the keyword.",
       "detail": "Repro: load counter, place caret inside 'fsm' (row0 col1) or 'Int' (row1), press F2, accept the prompt. Buffer becomes 'RENAMED counter' / 'count \u2208 XXX'. Fix: gate rename on the token being a user identifier, not a keyword/type-name.",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-28T13:57:41Z"
+      "created": "2026-06-28T13:57:41Z",
+      "cleared": "2026-06-28T15:14:24Z"
     },
     {
       "id": 483,
       "title": "\u22a2 verify field grammar is narrower than the language's and rejects natural forms with a 'wrong shape' error: (1) a bare-Bool antecedent 'done \u21d2 count \u2265 5' is rejected ('write A \u21d2 C e.g. count = 5 \u21d2 done = true') even though 'done' is a Bool var; (2) a value-op-var term '0 \u2264 count' is rejected ('each term must be var op value (bad: 0 \u2264 count)') even though the EDITOR accepts chained '0 \u2264 count \u2264 5'. So the verify box only accepts 'var op value' and 'comparison \u21d2 comparison'. Forms a user naturally types \u2014 'done \u21d2 \u2026', '0 \u2264 count \u2227 \u2026' \u2014 bounce. The error messages are good and corrective, so this is friction not a blocker, but the verify parser should accept the same comparison forms the source language does (flip value-op-var; allow bare-Bool vars as atoms on either side of \u21d2).",
       "detail": "On unbounded counter, verify view (STRUCTURE\u00b7LAW \u2192 verify \u00b7 \u25a1 property). 'count \u2265 0' \u2192 proven by k-induction (great). 'done \u21d2 count \u2265 5' \u2192 rejected. '0 \u2264 count \u2227 count \u2264 1000' \u2192 rejected; 'count \u2265 0 \u2227 count \u2264 1000' \u2192 holds. screenshots 13-verify-proven.png",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-28T14:03:07Z"
+      "created": "2026-06-28T14:03:07Z",
+      "cleared": "2026-06-28T15:14:24Z"
     },
     {
       "id": 484,
@@ -13070,6 +13073,24 @@
       "status": "open",
       "task": null,
       "created": "2026-06-28T14:08:20Z"
+    },
+    {
+      "id": 490,
+      "title": "Lotka-Volterra reported variable bound is STILL UNSOUND (#484 only half-fixed). The phase-portrait AXIS-SCALING half IS fixed \u2014 the PNG now shows the spiral + vector field at a sane scale, no 1e18 collapse. But the bound itself is not robust: POST /api/analyze on the predator-prey sample returns structure.bounds = prey:[0.0,178.914], pred:[0.041,106.416], yet 10 of its OWN 60 returned points[].state fall OUTSIDE that box \u2014 sampled min prey = -2.418 (below prey lower 0.0) and max pred = 129.901 (above pred upper 106.416). Deterministic across two runs (identical numbers). The header bound chip the USER reads literally says 'pred\u2208[0.041,106.416]' while the diagram plots a point at pred=129.9 \u2014 same honesty class as the old nonlinear [0,0] bug, a bound the model's own sampled states violate. Fix per the original concern: either clamp/discard the explicit-Euler-divergent samples to the proven region, or widen the reported bound to actually contain every point you plot \u2014 a 'robust band' that still excludes outliers from the PICTURE must also not be advertised as the variable's range. Repro: curl -s -X POST :PORT/api/analyze -d '{\"source\":<LV sample>}' then compare structure.bounds to points[].state.",
+      "detail": "examples/daemons/lotka.ev; screenshots marek-20260628-150528/07,08,09; /tmp/lv-out.json + lv-out2.json both show 10/60 violations",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T15:14:43Z"
+    },
+    {
+      "id": 491,
+      "title": "solution_space N/A card on Lotka-Volterra gives a FALSE reason: it reads 'solution space needs a numeric variable (this program's state is categorical \u2014 see state_graph for its boundary)' even though both carried vars are declared Real (prey \u2208 Real, pred \u2208 Real) \u2014 the opposite of categorical. The view may legitimately decline a continuous unbounded Real system, but the WORDING ('categorical', 'needs a numeric variable') is the wrong explanation and will confuse a user staring at two Real vars. The N/A card must give the TRUE reason (e.g. 'continuous Real state with no proven finite bound \u2014 see phase_portrait').",
+      "detail": "screenshot marek-20260628-150528/09-484-lv-final.png; SOLUTION SPACE tab on predator-prey sample",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T15:14:54Z"
     }
   ]
 }
