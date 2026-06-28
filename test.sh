@@ -98,6 +98,21 @@ if [ "$EXAMPLES_ONLY" -eq 0 ]; then
     echo
 fi
 
+# ── Phase 2.2: language conformance (tests/lang_tests/) ───────
+# The hand-written conformance corpus — one test_*.ev per language feature, each a set of
+# sat_/unsat_ claims run via `evident test`. Every claim must pass; the runner exits non-zero
+# on any failed claim OR load/parse error (so a broken feature can't slip through silently).
+if [ "$EXAMPLES_ONLY" -eq 0 ]; then
+    phase "Phase 2.2: language conformance (tests/lang_tests/)"
+    if runtime/target/release/evident test tests/lang_tests/ > /tmp/evident-lang-tests.log 2>&1; then
+        ok "lang conformance: $(grep -oE '[0-9]+ passed' /tmp/evident-lang-tests.log | tail -1)"
+    else
+        fail "lang conformance: $(tail -1 /tmp/evident-lang-tests.log)"
+        failures+=("lang conformance")
+    fi
+    echo
+fi
+
 # ── Phase 2.5: lint ratchet (Python code-quality guardrail) ───
 # Fails ONLY when ide/ + viz/ pick up NEW violations over ide/.lint-baseline
 # (file/function length, free-function count, coupling). Existing debt is

@@ -1,0 +1,75 @@
+-- Conformance tests for TUPLE-SET MEMBERSHIP: `(a, b) ∈ {(x1, y1), (x2, y2)}`.
+--
+-- A tuple on the LHS of a set-membership tests the whole tuple against each row,
+-- desugaring to `(a=x1 ∧ b=y1) ∨ (a=x2 ∧ b=y2)`. This relies on componentwise TUPLE
+-- EQUALITY, which the Eq encoder lowers as `(a,b)=(x,y) ≡ a=x ∧ b=y`. Before that case
+-- existed every row failed to translate, the disjunction was empty, and the membership
+-- folded to `false` — a SILENT spurious UNSAT that made any lookup-table TYPE uninhabitable.
+--
+-- Run with:
+--     evident test tests/lang_tests/test_tuple_set_membership.ev
+
+-- ── bare tuple equality ─────────────────────────────────────────
+
+claim sat_tuple_eq
+    a ∈ Int
+    b ∈ Int
+    (a, b) = (1, 2)
+    a = 1
+    b = 2
+
+claim unsat_tuple_eq_wrong
+    a ∈ Int
+    b ∈ Int
+    (a, b) = (1, 2)
+    a = 9
+
+-- ── tuple-set membership (all-Int) ──────────────────────────────
+
+claim sat_int_tuple_set
+    a ∈ Int
+    b ∈ Int
+    (a, b) ∈ {(1, 2), (3, 4)}
+    a = 3
+    b = 4
+
+claim unsat_int_tuple_set_off_diagonal
+    a ∈ Int
+    b ∈ Int
+    (a, b) ∈ {(1, 2), (3, 4)}
+    a = 1
+    b = 4               -- (1, 4) is not a row
+
+-- ── mixed Int/String tuple-set (the status-code shape) ──────────
+
+claim sat_mixed_tuple_set
+    code ∈ Int
+    name ∈ String
+    (code, name) ∈ {(200, "OK"), (404, "NOT_FOUND")}
+    code = 404
+    name = "NOT_FOUND"
+
+claim unsat_mixed_tuple_set_wrong_name
+    code ∈ Int
+    name ∈ String
+    (code, name) ∈ {(200, "OK"), (404, "NOT_FOUND")}
+    code = 200
+    name = "NOT_FOUND"  -- 200 pairs with "OK", not "NOT_FOUND"
+
+-- ── a lookup-table TYPE is inhabitable (regression: was UNSAT) ───
+
+type StatusCode(code ∈ Int, name ∈ String)
+    (code, name) ∈ {(200, "OK"), (404, "NOT_FOUND")}
+
+claim sat_status_type_inhabited
+    s ∈ StatusCode
+
+claim sat_status_type_forces_name
+    s ∈ StatusCode
+    s.code = 200
+    s.name = "OK"
+
+claim unsat_status_type_wrong_name
+    s ∈ StatusCode
+    s.code = 200
+    s.name = "NOT_FOUND"
