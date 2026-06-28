@@ -75,20 +75,18 @@ def _cardinality(m, var):
     return 1000  # numeric: treated as high-resolution
 
 
-def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
-    """Robust [lo, hi] of plotted data on one axis: IQR-fence to drop a lone
-    off-domain point, then pad lightly. Falls back to the grid box when there's
-    too little data to fence. Never returns an inverted or zero-width span."""
+def _robust_span(m, vals, fallback_lo, fallback_hi, pad=0.06):
+    """Robust [lo, hi] of plotted data on one axis: strip a lone off-domain point by
+    ISOLATION (the same gap-based test axis_bounds/dwell_span use, #465 follow-up), then
+    pad lightly. NOT a 3×IQR quantile fence — that collapsed a SMOOTH decaying transient
+    (a spiral sink's trajectory points dwelling near the sink) to a near-zero span, so the
+    field framed to ~1e-7 instead of the orbit's real [0,1] extent. A dense transient keeps
+    its span; a real sentinel is still peeled. Falls back to the grid box when there's too
+    little data. Never returns an inverted or zero-width span."""
     vals = [v for v in vals if v is not None]
     if len(vals) < 4:
         return fallback_lo, fallback_hi
-    s = sorted(vals)
-    n = len(s)
-    q1, q3 = s[n // 4], s[(3 * n) // 4]
-    iqr = q3 - q1
-    if iqr > 0:
-        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
-        s = [v for v in s if lof <= v <= hif] or s
+    s = m._strip_isolated_sentinels(sorted(vals))
     lo, hi = float(min(s)), float(max(s))
     if hi - lo < 1e-9:
         return lo - 1.0, hi + 1.0
@@ -215,8 +213,8 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
     if fit_to_data:
         dx_pts = list(GX) + traj_x
         dy_pts = list(GY) + traj_y
-        fx = _robust_span(dx_pts, xlo, xhi)
-        fy = _robust_span(dy_pts, ylo, yhi)
+        fx = _robust_span(m, dx_pts, xlo, xhi)
+        fy = _robust_span(m, dy_pts, ylo, yhi)
         ax.set_xlim(*fx)
         ax.set_ylim(*fy)
     else:

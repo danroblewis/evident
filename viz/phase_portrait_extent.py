@@ -182,14 +182,13 @@ def dwell_span(m, axx, axy):
     for v in (axx, axy):
         nm = v["name"]
         vals = sorted(_numeric(m, v, s[nm]) for s in tr)
-        # IQR-fence a lone off-domain visit, but keep the RAW span (no zero-width widening): a
-        # genuinely-constant axis must report lo==hi so the caller can detect the collapse.
-        if len(vals) >= 4:
-            q1, q3 = vals[len(vals) // 4], vals[(3 * len(vals)) // 4]
-            iqr = q3 - q1
-            if iqr > 0:
-                lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
-                vals = [x for x in vals if lof <= x <= hif] or vals
+        # Strip a lone off-domain visit by ISOLATION (the same gap-based test axis_bounds uses,
+        # #465 follow-up) — NOT a 3×IQR quantile fence, which collapsed a SMOOTH decaying transient
+        # (a spiral sink dwelling near 0) to ~1e-8 because the IQR shrinks to ~0 and the legitimate
+        # early extent reads as an outlier. A dense transient keeps its full span; a real sentinel
+        # is still peeled. Keeps the RAW span (no zero-width widening) so a genuinely-constant axis
+        # still reports lo==hi for the caller's collapse check.
+        vals = m._strip_isolated_sentinels(vals)
         out.append((float(min(vals)), float(max(vals))))
     return tuple(out)
 
