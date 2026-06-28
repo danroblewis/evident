@@ -4,7 +4,7 @@
 //! parse_expr and parse_addsub are pub(super) for the declaration parser.
 
 use crate::core::ast::*;
-use crate::lexer::Token;
+use crate::lexer::{Token, FStrPart};
 use super::{Parser, Result, peek_compare_op};
 
 impl Parser {
@@ -360,6 +360,40 @@ impl Parser {
         Ok(e)
     }
 
+    /// Desugar an f-string token into a left-associative `++` concat tree.
+    /// Each `FStrPart::Lit` becomes `Expr::Str`, each `FStrPart::Interp`
+    /// is re-parsed as an expression then folded in with `BinOp::Concat`.
+    /// An f-string with zero non-empty parts (e.g. f"") becomes `Expr::Str("")`.
+    fn desugar_fstring(&mut self, parts: Vec<FStrPart>) -> Result<Expr> {
+        // Collect the per-part expressions, dropping empty literal segments.
+        let mut exprs: Vec<Expr> = Vec::new();
+        for part in parts {
+            match part {
+                FStrPart::Lit(s) => {
+                    if !s.is_empty() {
+                        exprs.push(Expr::Str(s));
+                    }
+                }
+                FStrPart::Interp(src) => {
+                    // Parse the interpolation source as an expression.
+                    let expr = crate::parser::parse_expr_str(&src)
+                        .map_err(|e| self.err(format!(
+                            "f-string interpolation parse error: {}", e)))?;
+                    exprs.push(expr);
+                }
+            }
+        }
+        if exprs.is_empty() {
+            return Ok(Expr::Str(String::new()));
+        }
+        // Fold left: e0 ++ e1 ++ e2 ++ …
+        let mut acc = exprs.remove(0);
+        for e in exprs {
+            acc = Expr::Binary(BinOp::Concat, Box::new(acc), Box::new(e));
+        }
+        Ok(acc)
+    }
+
     fn parse_match(&mut self) -> Result<Expr> {
         self.bump();
         let scrutinee = self.parse_or()?;
@@ -444,6 +478,7 @@ impl Parser {
             Token::Int(n)   => { self.bump(); Ok(Expr::Int(n)) }
             Token::Real(v)  => { self.bump(); Ok(Expr::Real(v)) }
             Token::Str(s)   => { self.bump(); Ok(Expr::Str(s)) }
+            Token::FStr(parts) => { self.bump(); self.desugar_fstring(parts) }
             Token::True     => { self.bump(); Ok(Expr::Bool(true)) }
             Token::False    => { self.bump(); Ok(Expr::Bool(false)) }
             Token::Match    => self.parse_match(),

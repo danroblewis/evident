@@ -1,3 +1,12 @@
+/// One segment inside an f-string literal.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FStrPart {
+    /// A run of literal characters between (or around) interpolations.
+    Lit(String),
+    /// The raw source text of a `{expr}` interpolation (without braces).
+    Interp(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
 
@@ -5,6 +14,8 @@ pub enum Token {
     Int(i64),
     Real(f64),
     Str(String),
+    /// f"..." format-string literal: alternating literal/interp parts.
+    FStr(Vec<FStrPart>),
     True,
     False,
 
@@ -270,6 +281,14 @@ pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>)
                 })?;
                 tokens.push(Token::Int(n));
             }
+            'f' if { let mut clone = chars.clone(); clone.next(); clone.peek() == Some(&'"') } => {
+                // f"..." format-string literal
+                chars.next(); col += 1; // consume 'f'
+                chars.next(); col += 1; // consume '"'
+                let parts = lex_fstring(&mut chars, &mut line, &mut col)
+                    .map_err(|e| LexError { message: e, line, col })?;
+                tokens.push(Token::FStr(parts));
+            }
             c if is_ident_start(c) => {
                 let mut s = String::new();
                 while let Some(&ch) = chars.peek() {
@@ -389,6 +408,93 @@ pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>)
     Ok((tokens, locs))
 }
 
+/// Lex the body of an f-string after the opening `f"` has been consumed.
+/// Handles `{{`/`}}` as escaped literal braces, normal string escapes in
+/// literal runs, and `{expr}` interpolation spans. Returns the alternating
+/// parts list, or an error message string on malformed input.
+fn lex_fstring(
+    chars: &mut std::iter::Peekable<std::str::Chars>,
+    _line: &mut usize,
+    col: &mut usize,
+) -> Result<Vec<FStrPart>, String> {
+    let mut parts: Vec<FStrPart> = Vec::new();
+    let mut lit = String::new();
+
+    loop {
+        match chars.peek().copied() {
+            None => return Err("unterminated f-string at EOF".into()),
+            Some('\n') => return Err("unterminated f-string literal".into()),
+            Some('"') => {
+                chars.next(); *col += 1;
+                // flush any trailing literal
+                if !lit.is_empty() {
+                    parts.push(FStrPart::Lit(std::mem::take(&mut lit)));
+                }
+                return Ok(parts);
+            }
+            Some('{') => {
+                chars.next(); *col += 1;
+                if chars.peek() == Some(&'{') {
+                    // `{{` → escaped literal `{`
+                    chars.next(); *col += 1;
+                    lit.push('{');
+                } else {
+                    // start of an interpolation — collect until matching `}`
+                    // flush literal so far
+                    if !lit.is_empty() {
+                        parts.push(FStrPart::Lit(std::mem::take(&mut lit)));
+                    }
+                    let mut interp = String::new();
+                    let mut depth: usize = 1;
+                    loop {
+                        match chars.peek().copied() {
+                            None => return Err("unterminated f-string interpolation at EOF".into()),
+                            Some('\n') => return Err("unterminated f-string interpolation".into()),
+                            Some('{') => { depth += 1; interp.push('{'); chars.next(); *col += 1; }
+                            Some('}') => {
+                                chars.next(); *col += 1;
+                                depth -= 1;
+                                if depth == 0 { break; }
+                                interp.push('}');
+                            }
+                            Some(c) => { interp.push(c); chars.next(); *col += 1; }
+                        }
+                    }
+                    let s = interp.trim().to_string();
+                    if s.is_empty() {
+                        return Err("empty interpolation `{}` in f-string".into());
+                    }
+                    parts.push(FStrPart::Interp(s));
+                }
+            }
+            Some('}') => {
+                chars.next(); *col += 1;
+                if chars.peek() == Some(&'}') {
+                    // `}}` → escaped literal `}`
+                    chars.next(); *col += 1;
+                    lit.push('}');
+                } else {
+                    return Err("unexpected `}` in f-string (use `}}` for a literal `}`)".into());
+                }
+            }
+            Some('\\') => {
+                chars.next(); *col += 1;
+                match chars.peek().copied() {
+                    Some('"')  => { lit.push('"');  chars.next(); *col += 1; }
+                    Some('\\') => { lit.push('\\'); chars.next(); *col += 1; }
+                    Some('n')  => { lit.push('\n'); chars.next(); *col += 1; }
+                    Some('t')  => { lit.push('\t'); chars.next(); *col += 1; }
+                    Some(c)    => return Err(format!("unknown escape \\{} in f-string", c)),
+                    None       => return Err("unterminated escape in f-string".into()),
+                }
+            }
+            Some(c) => {
+                lit.push(c); chars.next(); *col += 1;
+            }
+        }
+    }
+}
+
 fn is_ident_start(c: char) -> bool {
     c.is_ascii_alphabetic() || c == '_'
 }
@@ -416,5 +522,61 @@ fn keyword_or_ident(s: String) -> Token {
         "false"    => Token::False,
         "mapsto"   => Token::MapsTo,
         _ => Token::Ident(s),
+    }
+}
+
+#[cfg(test)]
+mod fstr_tests {
+    use super::*;
+
+    fn first_fstr(src: &str) -> Vec<FStrPart> {
+        let toks = tokenize(src).unwrap();
+        toks.into_iter().find_map(|t| match t {
+            Token::FStr(parts) => Some(parts),
+            _ => None,
+        }).expect("no FStr token found")
+    }
+
+    #[test]
+    fn test_fstr_literal_only() {
+        let parts = first_fstr(r#"f"hello""#);
+        assert_eq!(parts, vec![FStrPart::Lit("hello".into())]);
+    }
+
+    #[test]
+    fn test_fstr_interp_only() {
+        let parts = first_fstr(r#"f"{a}""#);
+        assert_eq!(parts, vec![FStrPart::Interp("a".into())]);
+    }
+
+    #[test]
+    fn test_fstr_lit_then_interp() {
+        let parts = first_fstr(r#"f"v={a}""#);
+        assert_eq!(parts, vec![
+            FStrPart::Lit("v=".into()),
+            FStrPart::Interp("a".into()),
+        ]);
+    }
+
+    #[test]
+    fn test_fstr_escaped_braces() {
+        let parts = first_fstr(r#"f"{{lit}}""#);
+        assert_eq!(parts, vec![FStrPart::Lit("{lit}".into())]);
+    }
+
+    #[test]
+    fn test_fstr_empty() {
+        let parts = first_fstr(r#"f"""#);
+        assert_eq!(parts, vec![]);
+    }
+
+    #[test]
+    fn test_fstr_multi_interp() {
+        let parts = first_fstr(r#"f"{a}-{b}""#);
+        assert_eq!(parts, vec![
+            FStrPart::Interp("a".into()),
+            FStrPart::Lit("-".into()),
+            FStrPart::Interp("b".into()),
+        ]);
     }
 }

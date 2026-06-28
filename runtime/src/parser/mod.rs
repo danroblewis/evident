@@ -865,3 +865,24 @@ pub fn parse(src: &str) -> Result<Program> {
     let (toks, locs) = crate::lexer::tokenize_with_locs(src).map_err(|e| ParseError::new(e.to_string()))?;
     Parser::with_locs(toks, locs).parse_program()
 }
+
+/// Parse a single expression from a source string. Used by the f-string
+/// desugarer to parse `{expr}` interpolation bodies.
+pub fn parse_expr_str(src: &str) -> Result<crate::core::ast::Expr> {
+    let (toks, locs) = crate::lexer::tokenize_with_locs(src).map_err(|e| ParseError::new(e.to_string()))?;
+    let mut p = Parser::with_locs(toks, locs);
+    // Skip any leading Indent/Newline tokens emitted at line-start before the expression.
+    while matches!(p.peek(), Token::Indent(_) | Token::Newline) {
+        p.bump();
+    }
+    let e = p.parse_expr()?;
+    // Skip any trailing layout tokens, then expect Eof.
+    while matches!(p.peek(), Token::Indent(_) | Token::Newline) {
+        p.bump();
+    }
+    match p.peek() {
+        Token::Eof => Ok(e),
+        other => Err(ParseError::new(format!(
+            "unexpected token {:?} after expression in f-string interpolation", other))),
+    }
+}

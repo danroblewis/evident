@@ -1,0 +1,98 @@
+-- Conformance tests for f-string format-string literals.
+--
+-- Run with:
+--     evident test tests/lang_tests/test_fstring.ev
+--
+-- f"..." desugars at parse time into a `++`-concat tree:
+--   f"GET {protocol}://{host}" → "GET " ++ protocol ++ "://" ++ host
+-- The translator then sees plain String concat — no new IR is needed.
+-- Escaped braces: `{{` → literal `{`, `}}` → literal `}`.
+
+-- ── Literal-only f-string ───────────────────────────────────────
+
+claim sat_fstring_literal_only
+    s ∈ String = f"hello"
+    s = "hello"
+
+claim unsat_fstring_literal_only_wrong
+    s ∈ String = f"hello"
+    s = "world"
+
+-- ── Single interpolation ────────────────────────────────────────
+
+claim sat_fstring_single_interp
+    a ∈ String = "x"
+    s ∈ String = f"v={a}"
+    s = "v=x"
+
+claim unsat_fstring_single_interp_wrong
+    a ∈ String = "x"
+    s ∈ String = f"v={a}"
+    s = "v=y"
+
+-- ── Multiple interpolations ─────────────────────────────────────
+
+claim sat_fstring_multi_interp
+    protocol ∈ String = "https"
+    hostname ∈ String = "example.com"
+    port     ∈ Int    = 8080
+    path     ∈ String = "api"
+    -- explicit to_str for Int interpolation (matches desugar output)
+    url ∈ String = f"GET {protocol}://{hostname}:{to_str(port)}/{path}"
+    url = "GET https://example.com:8080/api"
+
+claim unsat_fstring_multi_interp_wrong
+    protocol ∈ String = "https"
+    hostname ∈ String = "example.com"
+    port     ∈ Int    = 8080
+    path     ∈ String = "api"
+    url ∈ String = f"GET {protocol}://{hostname}:{to_str(port)}/{path}"
+    url = "GET http://example.com:8080/api"
+
+-- ── Desugar matches explicit ++ form ───────────────────────────
+
+claim sat_fstring_equals_concat
+    a ∈ String = "foo"
+    b ∈ String = "bar"
+    s1 ∈ String = f"{a}-{b}"
+    s2 ∈ String = a ++ "-" ++ b
+    s1 = s2
+
+-- ── Escaped braces ──────────────────────────────────────────────
+
+claim sat_fstring_escaped_open_brace
+    s ∈ String = f"{{lit}}"
+    s = "{lit}"
+
+claim sat_fstring_escaped_close_brace
+    s ∈ String = f"value}}"
+    s = "value}"
+
+claim sat_fstring_both_escaped
+    s ∈ String = f"{{key}}={to_str(42)}"
+    s = "{key}=42"
+
+-- ── Empty f-string ──────────────────────────────────────────────
+
+claim sat_fstring_empty
+    s ∈ String = f""
+    s = ""
+
+-- ── Interpolation at the start/end ─────────────────────────────
+
+claim sat_fstring_interp_at_start
+    name ∈ String = "world"
+    s    ∈ String = f"{name}!"
+    s = "world!"
+
+claim sat_fstring_interp_at_end
+    prefix ∈ String = "hello"
+    s      ∈ String = f"{prefix} world"
+    s = "hello world"
+
+-- ── Nested call in interpolation ───────────────────────────────
+
+claim sat_fstring_call_in_interp
+    n ∈ Int = 42
+    s ∈ String = f"n={to_str(n)}"
+    s = "n=42"
