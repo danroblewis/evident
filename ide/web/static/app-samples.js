@@ -27,6 +27,44 @@ claim queens
                 col[i] ≠ col[j]
                 col[i] - col[j] ≠ i - j
                 col[i] - col[j] ≠ j - i`,
+  "http server · parse a request, serve a response (⊨ Solve)":
+`-- A text-only HTTP server as CONSTRAINTS — no socket, no parser, no handler code, just the
+-- SHAPE of HTTP. The request's fmt is a format string; pin it to a raw GET line and the solver
+-- runs the format BACKWARDS, recovering protocol / host / port / path by constraint. The handler
+-- is a lookup relation (path → status, body); the status NAME comes from the code table for free.
+-- Press ⊨ Solve to see the parsed request AND the full response the machine writes back.
+type HTTPStatusCode(code ∈ Int, name ∈ String)
+    (code, name) ∈ {
+        (200, "OK"),
+        (404, "NOT_FOUND"),
+        (500, "SERVER_ERROR"),
+    }
+
+type HTTPRequest
+    protocol, hostname, path ∈ String
+    port ∈ Int
+    fmt ∈ String = "GET " ++ protocol ++ "://" ++ hostname ++ ":" ++ to_str(port) ++ "/" ++ path
+
+type HTTPResponse
+    http_version ∈ String
+    status ∈ HTTPStatusCode
+    body, status_line ∈ String
+    status_line = "HTTP/" ++ http_version ++ " " ++ to_str(status.code) ++ " " ++ status.name
+    data ∈ String = status_line ++ "\\n\\n" ++ body
+
+-- The handler: a route table (path → status code, body). The unknown-route row ("") is the
+-- 404 fallthrough. The status NAME is NOT listed here — HTTPStatusCode's own table derives it.
+claim WebHandler(req ∈ HTTPRequest, res ∈ HTTPResponse)
+    (req.path, res.status.code, res.body) ∈ {
+        ("bolo", 200, "<h1>hello bolo</h1>"),
+        ("molo", 200, "<h1>hello molo</h1>"),
+        ("",     404, "<h1>not found</h1>"),
+    }
+
+claim serve
+    request ∈ HTTPRequest(fmt ↦ "GET https://bodygen.re:9000/bolo")
+    response ∈ HTTPResponse(http_version ↦ "1.1")
+    WebHandler(request, response)`,
   "graph coloring · 3-color a map (⊨ Solve)":
 `-- Color six regions so no two neighbors share a color — the classic CSP, as constraints.
 enum Hue = Red | Green | Blue
