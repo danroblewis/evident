@@ -382,6 +382,18 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
     inline dict. Split out solely so each phase stays under the function-length bar."""
     import base64
 
+    # SOUNDNESS (#490): the header chip's structure.bounds must CONTAIN every hover point[] the
+    # response ships — chip says prey∈[0,178.9] while a returned point plots prey=-2.418 is the
+    # unsound-bound lie. The bounds (robust reachable range) and the points (the phase-portrait's
+    # seeded orbits, which swing wider than from-init) come from different samplers. Reconcile by
+    # WIDENING the reported bound to cover every displayed point: the points are real states the
+    # shown orbits visit, so the union is the honest "range the machine enters", and bound ⊇ points
+    # holds by construction. Round OUTWARD so a rounded edge never clips the point it covers. (Points
+    # are already Euler-divergence-trimmed upstream — overlay filter + safe_trajectory's 1e14 guard —
+    # so widening to them never re-admits a 1e18 runaway.)
+    from model_const import widen_bounds_to_points
+    structure = widen_bounds_to_points(structure, points)
+
     from config import REACH_LIMIT
     from render import VIEWS, view_rigor
     cont = any(v.get("kind") == "real" for v in m.carried)

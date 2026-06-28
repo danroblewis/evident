@@ -69,3 +69,35 @@ def robust_value_band(vals, plo=1.0, phi=99.0, grow=50.0):
     if not kept:
         return (xs[0], xs[-1])
     return (kept[0], kept[-1])
+
+
+def widen_bounds_to_points(structure, points):
+    """Widen a `structure.bounds` map so it CONTAINS every response hover-point (#490): for each
+    bounded axis, extend [lo, hi] to also cover the min/max that axis takes across `points[].state`,
+    rounding OUTWARD (floor lo, ceil hi to 3 dp) so a rounded edge never clips the very point it was
+    widened to include. The reported bound (a robust reachable range) and the points (the phase-
+    portrait's seeded orbits, which swing wider than from-init) come from different samplers; this
+    reconciles them so the header chip never advertises a range a returned point falls outside —
+    bound ⊇ points by construction. Returns the structure with a reconciled bounds dict (shallow
+    copy; structure otherwise untouched); unchanged when there's no bounds dict or no points."""
+    import math
+    if not isinstance(structure, dict):
+        return structure
+    bounds = structure.get("bounds")
+    if not bounds or not points:
+        return structure
+    short = lambda n: n.split(".")[-1]
+    new_bounds = dict(bounds)
+    for pt in points:
+        for name, val in (pt.get("state") or {}).items():
+            sk = short(name)
+            if sk in new_bounds and isinstance(val, (int, float)) and not isinstance(val, bool):
+                lo, hi = new_bounds[sk]
+                if val < lo:
+                    lo = math.floor(val * 1000) / 1000
+                if val > hi:
+                    hi = math.ceil(val * 1000) / 1000
+                new_bounds[sk] = [lo, hi]
+    out = dict(structure)
+    out["bounds"] = new_bounds
+    return out
