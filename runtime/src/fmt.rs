@@ -269,7 +269,8 @@ fn reindent(src: &str) -> String {
         let depth = stack.len() - 1;
 
         flush_blank(&mut out_lines, &mut pending_blank, &mut emitted_any);
-        out_lines.push(format!("{}{}", " ".repeat(INDENT_WIDTH * depth), trimmed));
+        let body = respace_line(trimmed);
+        out_lines.push(format!("{}{}", " ".repeat(INDENT_WIDTH * depth), body));
         emitted_any = true;
 
         // Update bracket depth from this logical line's *code* (ignoring its
@@ -286,6 +287,176 @@ fn reindent(src: &str) -> String {
         result.push('\n');
     }
     result
+}
+
+/// Normalize *operator spacing* on a single logical line's text, leaving its
+/// trailing comment verbatim. This is the token-spacing half of `fmt` (#477):
+/// a single space around binary operators (`∈ := = == ? : < > ≤ ≥ ≠ + - * /
+/// ∧ ∨ ⇒ ⟸ ++ ↦ …`), and no inner space after the prefix operators `Δ` / `¬`
+/// or inside `f(x)` call parens.
+///
+/// It works by tokenizing the *code part* (comment stripped) and re-emitting
+/// the tokens with a spacing table — but it never *reconstructs* a token's
+/// text from the enum (that would lose the exact form of identifiers, string
+/// literals, and reals). Instead it slices each token's original source span
+/// (recovered from the lexer's per-token column) and only adjusts the
+/// whitespace *between* tokens. String/comment content is therefore byte-exact.
+///
+/// Soundness: any tokenize failure, or a token whose source span can't be
+/// recovered, makes this return the line *unchanged*. The caller's
+/// anti-corruption check ([`format_source`]) re-lexes the whole output and
+/// rejects it if a single real token was perturbed, so even a logic bug here
+/// can only cause a silent no-op, never a corruption.
+fn respace_line(line: &str) -> String {
+    // A full-line comment carries no code to respace.
+    if line.trim_start().starts_with("--") {
+        return line.to_string();
+    }
+    let code = code_part(line);
+    let comment = &line[code.len()..]; // "" or "  -- …" (leading ws + comment)
+
+    let respaced = match respace_code(code) {
+        Some(s) => s,
+        None => code.trim_end().to_string(),
+    };
+
+    // Reattach the trailing comment with a single normalizing space before it
+    // (only if there is code before it; a leading-`--` line was handled above).
+    let comment = comment.trim_start();
+    if comment.is_empty() {
+        respaced
+    } else if respaced.is_empty() {
+        comment.to_string()
+    } else {
+        format!("{respaced}  {comment}")
+    }
+}
+
+/// Re-emit a comment-free code fragment with normalized operator spacing, or
+/// `None` if it can't be tokenized / sliced (caller falls back to verbatim).
+fn respace_code(code: &str) -> Option<String> {
+    let (toks, locs) = crate::lexer::tokenize_with_locs(code).ok()?;
+    // Drop the structural markers — a single-line fragment has none we want.
+    let chars: Vec<char> = code.chars().collect();
+    // Recover each token's exact source text by slicing [start_col .. next_start]
+    // and trimming whitespace. Columns are 1-based char offsets on this line.
+    let real: Vec<(usize, &Token)> = toks
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| !matches!(t, Token::Newline | Token::Indent(_) | Token::Eof))
+        .map(|(i, t)| (i, t))
+        .collect();
+
+    let mut texts: Vec<String> = Vec::with_capacity(real.len());
+    for (k, (i, _tok)) in real.iter().enumerate() {
+        let start = locs[*i].1.saturating_sub(1); // 1-based col → 0-based char idx
+        // End is the start of the next real token (or end-of-line), trimmed.
+        let end = real
+            .get(k + 1)
+            .map(|(j, _)| locs[*j].1.saturating_sub(1))
+            .unwrap_or(chars.len());
+        if start > chars.len() || end > chars.len() || start > end {
+            return None;
+        }
+        let slice: String = chars[start..end].iter().collect();
+        texts.push(slice.trim_end().to_string());
+    }
+
+    let kinds: Vec<&Token> = real.iter().map(|(_, t)| *t).collect();
+    Some(emit_with_spacing(&kinds, &texts))
+}
+
+/// Given the real tokens and each token's exact source text, join them with
+/// normalized spacing. The rule set:
+///   * binary operators get a space on each side;
+///   * `Δ` / `¬` are prefix — no space after;
+///   * a `-` that begins an expression (after an operator / open bracket /
+///     comma / nothing) is unary — no space after; otherwise it's binary;
+///   * `(`/`[`/`⟨` openers and `)`/`]`/`⟩` closers, `#`, `.`, `..`, postfix —
+///     hug their neighbour;
+///   * `,` hugs its left, space on its right.
+fn emit_with_spacing(kinds: &[&Token], texts: &[String]) -> String {
+    let mut out = String::new();
+    for k in 0..kinds.len() {
+        let tok = kinds[k];
+        let prev = if k > 0 { Some(kinds[k - 1]) } else { None };
+
+        let space_before = if k == 0 {
+            false
+        } else {
+            wants_space_between(prev.unwrap(), tok, kinds, k)
+        };
+        if space_before {
+            out.push(' ');
+        }
+        out.push_str(&texts[k]);
+    }
+    out
+}
+
+/// Should there be a space between the token ending the run so far (`prev`) and
+/// the token about to be emitted (`cur`, at index `k`)? `kinds` is the full run
+/// so a `-`/`+`'s unary-vs-binary nature can be read from what precedes it.
+fn wants_space_between(prev: &Token, cur: &Token, kinds: &[&Token], k: usize) -> bool {
+    use Token::*;
+
+    // Hug tight after an opener and before a closer / comma — no space.
+    if matches!(prev, LParen | LBracket | LSeq | LBrace | Hash) {
+        return false;
+    }
+    if matches!(cur, RParen | RBracket | RSeq | RBrace | Comma) {
+        return false;
+    }
+    // `.` / `..` field/range access hugs both sides: a.b , {0..n}.
+    if matches!(prev, Dot | DotDot) || matches!(cur, Dot | DotDot) {
+        return false;
+    }
+    // Prefix `Δ` / `¬` bind to the following name: Δcount, ¬cond — no space after.
+    if matches!(prev, Delta | Not) {
+        return false;
+    }
+    // A call/index immediately after a value: `f` `(` , `xs` `[` — no space, it's
+    // application. After an operator/keyword, `(` starts a grouping and DOES get a
+    // space (`= (a + b)`), which the operator's own right-space rule below covers.
+    if matches!(cur, LParen | LBracket) && is_value_end(prev) {
+        return false;
+    }
+    // Unary minus / plus. A `-`/`+` whose left neighbour is NOT a value end is a
+    // sign on its operand (`:= -5`, `(-x)`, `, -3`), not a binary operator. The
+    // sign itself is spaced from what precedes it (handled by falling through to
+    // the default), but it must HUG its operand: when `prev` is that unary sign,
+    // emit no space before the operand.
+    if matches!(prev, Minus | Plus) && !is_value_end_lookback(kinds, k - 1) {
+        return false;
+    }
+
+    // Everything else: if either side is an operator/keyword that takes spacing,
+    // emit a single space. Two adjacent value tokens (rare: a keyword followed by
+    // an identifier like `match state`, `∀ x`) also get one space.
+    true
+}
+
+/// Does this token end a *value* (so a following `-`/`+`/`(` is binary/applied,
+/// not unary/grouping)? Values: identifiers, literals, and closers.
+fn is_value_end(t: &Token) -> bool {
+    use Token::*;
+    matches!(
+        t,
+        Ident(_) | Int(_) | Real(_) | Str(_) | True | False
+            | RParen | RBracket | RSeq | Hash
+    )
+}
+
+/// Is the token at `idx` a *unary* sign? It's unary iff what precedes IT is not
+/// a value end (or it's the first token). Used to decide whether the sign hugs
+/// its operand (unary) or is spaced (binary) — symmetric with the emit logic.
+fn is_value_end_lookback(kinds: &[&Token], idx: usize) -> bool {
+    // `kinds[idx]` is a Minus/Plus. It is BINARY (a value-end for spacing of its
+    // operand) iff the token before it ends a value.
+    if idx == 0 {
+        return false; // leading sign → unary
+    }
+    is_value_end(kinds[idx - 1])
 }
 
 /// Does the logical line *starting* at physical-line index `head` open an
@@ -635,10 +806,12 @@ mod tests {
                    ¬ is_first_tick ⇒\n        Δi = (_i < 5 ? 1 : 0)\n              \
                    Δsum = (_i < 5 ? _i : 0)\n";
         let out = format_source(src).unwrap();
+        // `¬` is a prefix operator — `respace` hugs it to its operand
+        // (`¬is_first_tick`), normalizing the input's `¬ is_first_tick`.
         assert_eq!(
             out,
             "fsm accumulate\n    i ∈ Int\n    sum ∈ Int\n    is_first_tick ⇒\n        \
-             i = 0\n        sum = 0\n    ¬ is_first_tick ⇒\n        \
+             i = 0\n        sum = 0\n    ¬is_first_tick ⇒\n        \
              Δi = (_i < 5 ? 1 : 0)\n        Δsum = (_i < 5 ? _i : 0)\n"
         );
         assert_eq!(format_source(&out).unwrap(), out, "not a fixed point");
@@ -674,6 +847,70 @@ mod tests {
         let src = "fsm counter\n  count ∈ Int\n  is_first_tick ⇒ count = 0\n";
         let out = format_source(src).unwrap();
         assert_eq!(out, "fsm counter\n    count ∈ Int\n    is_first_tick ⇒ count = 0\n");
+        roundtrips(src);
+    }
+
+    // #477: operator-spacing normalization. Ana's three cramped cases must come
+    // out idiomatically spaced — AND the output must round-trip (same AST) and be
+    // a fixed point.
+    #[test]
+    fn respaces_anas_cases() {
+        let src = "claim c\n    count∈Int:=0\n    Δcount=(_count<5?1:0)\n    done∈Bool=(count≥5)\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "claim c\n    count ∈ Int := 0\n    Δcount = (_count < 5 ? 1 : 0)\n    done ∈ Bool = (count ≥ 5)\n"
+        );
+        roundtrips(src);
+        // It actually CHANGED the bytes (not a silent no-op).
+        assert_ne!(out, src);
+    }
+
+    // Negative literal: `-5` is a unary sign on a literal — it must stay `-5`,
+    // NOT become `- 5`. Binary subtraction `a - 5` gets spaces.
+    #[test]
+    fn negative_literal_hugs_but_binary_minus_spaces() {
+        let src = "claim c\n    x∈Int:=-5\n    y∈Int:=a-5\n    z∈Int:=(0-w)\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "claim c\n    x ∈ Int := -5\n    y ∈ Int := a - 5\n    z ∈ Int := (0 - w)\n"
+        );
+        roundtrips(src);
+    }
+
+    // Prefix operators Δ / ¬ / `_` bind to their name — no inner space.
+    #[test]
+    fn prefix_operators_hug_their_name() {
+        let src = "fsm f\n    cond∈Bool\n    ¬cond⇒x=1\n    Δx=_x\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "fsm f\n    cond ∈ Bool\n    ¬cond ⇒ x = 1\n    Δx = _x\n"
+        );
+        roundtrips(src);
+    }
+
+    // Operators inside a string literal or a comment are content, not code — they
+    // must NOT be respaced.
+    #[test]
+    fn strings_and_comments_are_verbatim() {
+        let src = "claim c\n    s∈String:=\"a=b<c+d\"   -- keep x=y here\n";
+        let out = format_source(src).unwrap();
+        assert!(out.contains("\"a=b<c+d\""), "string content perturbed: {out}");
+        assert!(out.contains("-- keep x=y here"), "comment perturbed: {out}");
+        // The code outside the string IS spaced.
+        assert!(out.contains("s ∈ String := "), "code not respaced: {out}");
+        roundtrips(src);
+    }
+
+    // Call application `f(x)` and index `xs[i]` hug — no space before the paren,
+    // none inside; but a grouping `(` after `=` is spaced.
+    #[test]
+    fn call_and_index_hug_grouping_spaces() {
+        let src = "claim c\n    r∈Int:=f(a,b)+xs[0]\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(out, "claim c\n    r ∈ Int := f(a, b) + xs[0]\n");
         roundtrips(src);
     }
 
