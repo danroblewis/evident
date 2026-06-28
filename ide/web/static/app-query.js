@@ -37,13 +37,31 @@ function _stripOuterParens(s) {
   }
   return t;
 }
+// #483: flip a comparison operator when the term is written value-op-var ("0 ≤ count" means "count ≥ 0").
+const _FLIP_OP = { "<=": ">=", ">=": "<=", "<": ">", ">": "<", "≤": "≥", "≥": "≤", "=": "=", "≠": "≠", "!=": "!=" };
+// value-op-var order: a literal (number/true/false/identifier value) then an op then the VAR.
+const _INV_RE_FLIPPED = /^\s*(-?\d+(?:\.\d+)?|true|false|[A-Za-z_]\w*)\s*(<=|>=|!=|<|>|=|≤|≥|≠)\s*([A-Za-z_]\w*(?:\.\w+)?)\s*$/;
+// a bare Bool term: `done` ⇒ [done,'=','true']; `¬done` / `!done` ⇒ [done,'=','false'] (#483).
+const _BARE_BOOL_RE = /^\s*(¬|!|not\s+)?([A-Za-z_]\w*(?:\.\w+)?)\s*$/;
+
+// Parse ONE conjunct into a [var, op, value] term, accepting (1) var-op-value (the original), (2) the
+// flipped value-op-var order, and (3) a bare Bool var (optionally ¬-prefixed). Returns null on no match.
+function _parseTerm(part) {
+  const m = part.match(_INV_RE);
+  if (m) return [m[1], m[2], _coerce(m[3])];
+  const f = part.match(_INV_RE_FLIPPED);                       // #483: "0 ≤ count" → [count, ≥, 0]
+  if (f && _FLIP_OP[f[2]]) return [f[3], _FLIP_OP[f[2]], _coerce(f[1])];
+  const b = part.match(_BARE_BOOL_RE);                         // #483: bare Bool → name = true/false
+  if (b) return [b[2], "=", _coerce(b[1] ? "false" : "true")]; // a leading ¬/!/not negates it (coerce → Bool)
+  return null;
+}
 function _parseTerms(raw) {
   const parts = _stripOuterParens(raw).split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
   const terms = [];
   for (const part of parts) {
-    const m = part.match(_INV_RE);
-    if (!m) return { error: part.trim() };
-    terms.push([m[1], m[2], _coerce(m[3])]);
+    const term = _parseTerm(part);
+    if (!term) return { error: part.trim() };
+    terms.push(term);
   }
   return { terms };
 }

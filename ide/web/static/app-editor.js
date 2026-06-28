@@ -302,6 +302,16 @@ function initEditorInput() {
       const pos = ed.getCursorPosition();
       const base = stripIdentPrefix((ed.session.getTextRange(ed.session.getWordRange(pos.row, pos.column)) || "").trim());
       if (!/^[A-Za-z_]\w*$/.test(base)) { setStatus("put the cursor on an identifier to rename (F2)", "dim"); return; }
+      // #481: only rename a DECLARED USER SYMBOL (a var/claim/type/enum/variant the buffer declares). A
+      // language keyword (`fsm`, `claim`) or a built-in type (`Int`, `Bool`) is NOT in bufferDecls, so
+      // refuse — renaming it would corrupt the program (it'd no longer parse). scopeDecls() is the #387 map.
+      const decl = (typeof scopeDecls === "function") ? scopeDecls().get(base) : null;
+      if (!decl) {
+        const builtin = /^(fsm|claim|type|enum|schema|subclaim|match|matches|import|assert|is_first_tick|Int|Bool|Nat|Real|String|Seq|Set|true|false)$/.test(base);
+        setStatus(builtin ? `can't rename "${base}" — it's a language keyword / built-in type`
+                          : `"${base}" isn't a declared symbol here — nothing to rename`, "dim");
+        return;
+      }
       const next = window.prompt(`Rename "${base}" (and its _ / Δ forms) to:`, base);
       if (!next || next === base) return;
       if (!/^[A-Za-z_]\w*$/.test(next)) { setStatus(`"${next}" isn't a valid identifier`, "err"); return; }

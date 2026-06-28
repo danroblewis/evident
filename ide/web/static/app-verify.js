@@ -147,10 +147,11 @@ async function checkInvariant() {
     const terms = [[varName, lop === "<" ? ">" : ">=", _coerce(lo)], [varName, hop, _coerce(hi)]];
     return _runSafety(out, { terms });
   }
-  // Single comparison.
-  const mt = raw.match(_INV_RE);
-  if (!mt) { out.className = "bad"; out.textContent = "✕ write  var op value  (e.g. count ≤ 5  ·  0 ≤ x ≤ 6  ·  a ∧ b ⇒ c)"; return; }
-  return _runSafety(out, { var: mt[1], op: mt[2], value: _coerce(mt[3]) });
+  // Single comparison — #483: via _parseTerm so it also accepts the flipped value-op-var order
+  // (`0 ≤ count` → count ≥ 0) and a bare Bool var (`done` → done = true; `¬done` → done = false).
+  const tm = _parseTerm(raw);
+  if (!tm) { out.className = "bad"; out.textContent = "✕ write  var op value  (e.g. count ≤ 5  ·  0 ≤ x  ·  done  ·  0 ≤ x ≤ 6  ·  a ∧ b ⇒ c)"; return; }
+  return _runSafety(out, { var: tm[0], op: tm[1], value: tm[2] });
 }
 
 // Run ONE safety check (#381) against /api/invariant for `body` (a single-var, conjunction, or
