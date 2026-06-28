@@ -75,9 +75,13 @@ def discover_py_files(repo_root: Path) -> list[Path]:
     found: list[Path] = []
     found += (repo_root / "ide").rglob("*.py")
     found += (repo_root / "viz").glob("*.py")
+    # Skip caches, this linter, and any vendored / virtualenv tree: rglob("ide") otherwise descends
+    # into ide/.venv/lib/.../site-packages (third-party pip code), whose god-modules are not ours to
+    # lint and swamp the ratchet (Rule 3 jumped 0 → 22 from pip alone once a .venv appeared).
+    SKIP_DIRS = {"__pycache__", ".venv", "venv", "env", "site-packages", "node_modules", ".git", ".tox"}
     out = []
     for p in sorted(set(found)):
-        if "__pycache__" in p.parts or p.name == "lint.py":
+        if p.name == "lint.py" or SKIP_DIRS & set(p.parts):
             continue
         out.append(p)
     return out
