@@ -1,5 +1,5 @@
 {
-  "seq": 479,
+  "seq": 482,
   "tasks": [
     {
       "id": 1,
@@ -11604,6 +11604,21 @@
         "solve"
       ],
       "log": []
+    },
+    {
+      "id": 482,
+      "title": "Replace native window.prompt() rename with inline rename: F2 currently pops a browser-chrome prompt() dialog (blocks the page, unstyleable, breaks flow \u2014 and during my session a stuck native dialog appeared to interfere with navigation). Every serious editor (VS Code, JetBrains) does inline rename: the token + all its occurrences highlight, you type the new name and they update live, Esc cancels. Do that instead of prompt().",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T13:57:48Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -12668,27 +12683,30 @@
       "title": "Nonlinear claim 'area = height * width' (unbounded Ints) does NOT show the promised 'nonlinear \u2014 structure analysis skipped' note. Instead it (a) takes ~16s (header showed 16136 ms; not 'fast'), and (b) reports a MISLEADING boundary 'height \u2208 [0,0] width \u2208 [0,0]' under a chart titled 'boundaries z3-solved exact' with a '\u2713 proven' badge. That bound is FALSE: with area unconstrained, height=5/width=0/area=0 is a valid model, so height/width are unbounded \u2014 the real range is not [0,0]. This is the exact honesty failure the IDE promises never to commit (a fabricated 'exact' structure for a bound it cannot soundly compute). Either show the nonlinear-skip note and an honest 'bounds unknown (nonlinear)' card, or don't label a degenerate single-model box as 'exact/proven'.",
       "detail": "Repro: type 'claim rect / height \u2208 Int / width \u2208 Int / area \u2208 Int / area = height * width', wait for analyze. Screenshot marek-20260625-062704/14-nonlinear-claim.png. solution-structure tab also re-solves 2.5s+.",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:42:42Z"
+      "created": "2026-06-25T06:42:42Z",
+      "cleared": "2026-06-28T12:41:43Z"
     },
     {
       "id": 384,
       "title": "Tour step 5 ('Break it on purpose') instructs: 'delete the line is_first_tick \u21d2 count = 0 \u2014 that's the SEED'. But after the := refactor (#321) the counter sample's seed is 'count \u2208 Int := 0' \u2014 there is NO 'is_first_tick \u21d2 count = 0' line in the buffer to delete. A newcomer following step 5 literally cannot find that line. Verified live: tour loads counter (buffer = 'fsm counter / count \u2208 Int := 0 / \u0394count = (_count<5?1:0) / done \u2208 Bool=(count\u22655)'), step-5 text references a line absent from that buffer. Fix: update step 5 to the := form \u2014 e.g. 'delete the := 0 on count \u2208 Int := 0 (the seed) and watch the dropped-constraint count / amber gutter mark flag the freed seed.' (The honest-dropped-constraint surfacing itself is excellent \u2014 banner + ace gutter annotation naming the exact dropped expr \u2014 so only the instruction text is stale.)",
       "detail": "",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": 63,
-      "created": "2026-06-25T06:44:44Z"
+      "created": "2026-06-25T06:44:44Z",
+      "cleared": "2026-06-28T12:39:31Z"
     },
     {
       "id": 385,
       "title": "Explainer teaches FSM concepts well and now hides correctly (concern #361 cleared: hides for hand-typed/diverged buffer; no longer stale-by-one \u2014 vending shows vending, thermostat/four-signals/sudoku correctly hidden). BUT two gaps remain: (1) The shared generic body paragraph is HARDCODED to 'count': for 'random walk' (vars x, y; no count anywhere) the explainer still says '_count reads the value on the previous tick; count = \u2026 writes this tick, _count reads the PREVIOUS tick' \u2014 teaching with a variable that isn't in the user's program. Verified live: random_walk buffer uses x,y,\u0394x,\u0394y; explainer body references count/_count/\u0394count. Same staleness class as the tour bug. Fix: template the generic paragraph on the sample's actual carried var, or write the generic prose variable-agnostically ('_v reads the previous tick'). (2) NO explainer at all on the Solve samples (sudoku/subset-sum/N-queens) \u2014 the explainer is FSM-only, so a newcomer who opens sudoku to 'learn the ideas' (the relational/solve idea the tour step-6 promotes) gets nothing. The task asked to teach what a 'claim / relation' MEANS; that half is unaddressed.",
       "detail": "",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": 102,
-      "created": "2026-06-25T06:44:54Z"
+      "created": "2026-06-25T06:44:54Z",
+      "cleared": "2026-06-28T12:40:55Z"
     },
     {
       "id": 392,
@@ -12941,6 +12959,24 @@
       "status": "open",
       "task": null,
       "created": "2026-06-28T11:52:52Z"
+    },
+    {
+      "id": 480,
+      "title": "Nonlinear claim card contradicts itself: body correctly says 'nonlinear claim (a product of variables) \u2014 Z3 can't soundly bound it (nonlinear integer arithmetic is undecidable)', but a green '\u2713 proven' badge still renders in the chart's top-right corner. A 'proven' stamp over an 'I can't prove this' message is an honesty mismatch. The dangerous part (#383's false [0,0] 'exact' box) is gone \u2014 this is only the badge. Fix: suppress the proven badge (or swap it for a 'skipped \u2014 nonlinear' chip) when the solution-space card is the nonlinear-undecidable fallback.",
+      "detail": "claim rect / height,width \u2208 Int / area \u2208 Int = height*width \u2192 solution space view; screenshot 05-nonlinear-383.png; badge at top:254 left:1197 visible:true while body reads can't-soundly-bound",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T12:41:58Z"
+    },
+    {
+      "id": 481,
+      "title": "F2 rename has no keyword guard: invoking rename with the cursor on a LANGUAGE KEYWORD renames the keyword, corrupting the program. Reproduced on counter sample: cursor inside 'fsm' \u2192 prompt 'Rename \"fsm\"' \u2192 accepting yields 'RENAMED counter' (fsm keyword gone, program no longer parses). Same with 'Int': cursor in 'Int' \u2192 'count \u2208 XXX'. The variable-rename itself is excellent (count\u2192tally correctly updates _count/\u0394count/bare count \u2014 all four forms), but rename must REFUSE keywords/builtins (fsm, claim, type, enum, Int, Bool, Nat, \u2200/\u2203 etc.) \u2014 show 'nothing to rename here' instead of mangling the keyword.",
+      "detail": "Repro: load counter, place caret inside 'fsm' (row0 col1) or 'Int' (row1), press F2, accept the prompt. Buffer becomes 'RENAMED counter' / 'count \u2208 XXX'. Fix: gate rename on the token being a user identifier, not a keyword/type-name.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T13:57:41Z"
     }
   ]
 }
