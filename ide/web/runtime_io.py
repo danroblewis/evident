@@ -47,7 +47,11 @@ def _run_query(source, claim, given, work):
     if claim:
         cmd.append(claim)
     for k, v in (given or {}).items():
-        cmd += ["--given", f"{k}={v}"]
+        # #466: given values arrive DOMAIN-TYPED (Int/Bool/Float/str), not only str — an Int pin
+        # should take an Int. Format bool as Evident's lowercase true/false; ints/floats/str f-string
+        # straight through (so x=3 and x="3" are identical on the CLI).
+        sv = "true" if v is True else "false" if v is False else v
+        cmd += ["--given", f"{k}={sv}"]
     cmd.append("--json")
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=ROOT)
     out = (r.stdout or "").strip()

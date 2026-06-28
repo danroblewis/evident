@@ -36,7 +36,7 @@ router = APIRouter()
 class SolveReq(BaseModel):
     source: str
     claim: str | None = None
-    given: dict[str, str] | None = None
+    given: dict[str, str | int | float | bool] | None = None  # #466: domain-typed pins, not str-only
     enumerate: bool = False
     limit: int | None = None
     fold_symmetry: bool = False           # collapse value-symmetric witnesses (Ana #271)
